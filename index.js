@@ -14,45 +14,47 @@ app.use((req, res, next) => {
 });
 
 app.post("/telegram", async (req, res) => {
-  if (req.headers["x-secret"] !== process.env.SECRET_KEY) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-
-  const { text, photo } = req.body;
-
-  const payload = photo
-    ? {
-        chat_id: process.env.TELEGRAM_CHAT_ID,
-        photo,
-        caption: text
-      }
-    : {
-        chat_id: process.env.TELEGRAM_CHAT_ID,
-        text
-      };
-
-  const endpoint = photo ? "sendPhoto" : "sendMessage";
-
-  const tg = await fetch(
-    `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/${endpoint}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+  try {
+    if (req.headers["x-secret"] !== process.env.SECRET_KEY) {
+      return res.status(403).json({ error: "Forbidden" });
     }
-  );
 
-  const data = await tg.json();
+    const { text, photo } = req.body;
+    const token = process.env.TELEGRAM_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
 
-  if (!data.ok) {
-    console.error("Telegram error:", data);
-    return res.status(500).json(data);
+    if (photo && photo.startsWith("http") && !photo.includes("placeholder")) {
+      await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          photo,
+          caption: text
+        })
+      });
+    } else {
+      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text
+        })
+      });
+    }
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("Telegram error:", e);
+    res.status(500).json({ error: "Telegram failed" });
   }
-
-  res.json({ ok: true });
 });
 
-app.listen(3000);
+app.listen(3000, () => {
+  console.log("Webhook activo en puerto 3000");
+});
+
 
 
 

@@ -13,12 +13,10 @@ app.use((req, res, next) => {
   next();
 });
 
-/* 🔥 IMPORTANTE: evita que Render se duerma */
-app.get("/", (req, res) => {
-  res.status(200).send("OK");
-});
+/* 🔥 Evita que Render se duerma */
+app.get("/", (_, res) => res.send("OK"));
 
-async function enviarTelegram(endpoint, payload, token) {
+async function telegram(endpoint, payload, token) {
   const r = await fetch(`https://api.telegram.org/bot${token}/${endpoint}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -27,23 +25,12 @@ async function enviarTelegram(endpoint, payload, token) {
 
   const data = await r.json();
 
-  /* 🧠 Grupo migrado a supergrupo */
   if (!data.ok && data.parameters?.migrate_to_chat_id) {
-    console.log("Grupo migrado, reenviando a:", data.parameters.migrate_to_chat_id);
     payload.chat_id = data.parameters.migrate_to_chat_id;
-
-    return fetch(`https://api.telegram.org/bot${token}/${endpoint}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    return telegram(endpoint, payload, token);
   }
 
-  if (!data.ok) {
-    console.error("Error Telegram:", data);
-    throw new Error("Telegram error");
-  }
-
+  if (!data.ok) throw data;
   return data;
 }
 
@@ -55,36 +42,32 @@ app.post("/telegram", async (req, res) => {
 
     const { text, photo } = req.body;
     const token = process.env.TELEGRAM_TOKEN;
-    let chatId = process.env.TELEGRAM_CHAT_ID;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
 
-    if (!text) {
-      return res.status(400).json({ error: "Text requerido" });
+    /* 1️⃣ Intentar con foto */
+    if (photo && photo.startsWith("http")) {
+      try {
+        await telegram(
+          "sendPhoto",
+          { chat_id: chatId, photo, caption: text },
+          token
+        );
+        return res.json({ ok: true, mode: "photo" });
+      } catch (e) {
+        console.warn("Foto falló, enviando solo texto");
+      }
     }
 
-    if (photo && photo.startsWith("http") && !photo.includes("placeholder")) {
-      await enviarTelegram(
-        "sendPhoto",
-        {
-          chat_id: chatId,
-          photo,
-          caption: text
-        },
-        token
-      );
-    } else {
-      await enviarTelegram(
-        "sendMessage",
-        {
-          chat_id: chatId,
-          text
-        },
-        token
-      );
-    }
+    /* 2️⃣ Fallback seguro: solo texto */
+    await telegram(
+      "sendMessage",
+      { chat_id: chatId, text },
+      token
+    );
 
-    res.json({ ok: true });
+    res.json({ ok: true, mode: "text" });
   } catch (e) {
-    console.error("Telegram falló:", e.message);
+    console.error("Telegram error final:", e);
     res.status(500).json({ error: "Telegram failed" });
   }
 });

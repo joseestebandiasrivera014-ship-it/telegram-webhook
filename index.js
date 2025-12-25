@@ -2,6 +2,7 @@ import express from "express";
 import fetch from "node-fetch";
 
 const app = express();
+app.set("trust proxy", 1);
 
 app.use(express.json());
 
@@ -39,5 +40,6 @@ app.post("/telegram", async (req, res) => {
 });
 
 app.listen(3000);
+
 
 

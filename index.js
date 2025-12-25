@@ -3,17 +3,13 @@ import fetch from "node-fetch";
 
 const app = express();
 app.set("trust proxy", 1);
-
 app.use(express.json());
 
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "https://eventos-ciudad.web.app");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Secret");
-
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
-  }
+  if (req.method === "OPTIONS") return res.sendStatus(200);
   next();
 });
 
@@ -24,11 +20,7 @@ app.post("/telegram", async (req, res) => {
 
   const { text, photo } = req.body;
 
-  const hasPhoto = photo && !photo.includes("placeholder");
-
-  const endpoint = hasPhoto ? "sendPhoto" : "sendMessage";
-
-  const payload = hasPhoto
+  const payload = photo
     ? {
         chat_id: process.env.TELEGRAM_CHAT_ID,
         photo,
@@ -39,21 +31,28 @@ app.post("/telegram", async (req, res) => {
         text
       };
 
-  const url = `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/${endpoint}`;
+  const endpoint = photo ? "sendPhoto" : "sendMessage";
 
-  const tgRes = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
+  const tg = await fetch(
+    `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/${endpoint}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }
+  );
 
-  const tgData = await tgRes.json();
+  const data = await tg.json();
 
-  res.json({ ok: true, telegram: tgData });
+  if (!data.ok) {
+    console.error("Telegram error:", data);
+    return res.status(500).json(data);
+  }
+
+  res.json({ ok: true });
 });
 
 app.listen(3000);
-
 
 
 

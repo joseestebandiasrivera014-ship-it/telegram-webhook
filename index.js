@@ -24,22 +24,36 @@ app.post("/telegram", async (req, res) => {
 
   const { text, photo } = req.body;
 
-  const url = `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendPhoto`;
+  const hasPhoto = photo && !photo.includes("placeholder");
 
-  await fetch(url, {
+  const endpoint = hasPhoto ? "sendPhoto" : "sendMessage";
+
+  const payload = hasPhoto
+    ? {
+        chat_id: process.env.TELEGRAM_CHAT_ID,
+        photo,
+        caption: text
+      }
+    : {
+        chat_id: process.env.TELEGRAM_CHAT_ID,
+        text
+      };
+
+  const url = `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/${endpoint}`;
+
+  const tgRes = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: process.env.TELEGRAM_CHAT_ID,
-      photo: photo || "https://via.placeholder.com/300",
-      caption: text
-    })
+    body: JSON.stringify(payload)
   });
 
-  res.json({ ok: true });
+  const tgData = await tgRes.json();
+
+  res.json({ ok: true, telegram: tgData });
 });
 
 app.listen(3000);
+
 
 
 

@@ -13,7 +13,6 @@ app.use((req, res, next) => {
   next();
 });
 
-/* 🔥 Evita que Render se duerma */
 app.get("/", (_, res) => res.send("OK"));
 
 async function telegram(endpoint, payload, token) {
@@ -34,6 +33,7 @@ async function telegram(endpoint, payload, token) {
   return data;
 }
 
+// ENDPOINT /telegram (el que ya tenías)
 app.post("/telegram", async (req, res) => {
   try {
     if (req.headers["x-secret"] !== process.env.SECRET_KEY) {
@@ -44,12 +44,11 @@ app.post("/telegram", async (req, res) => {
     const token = process.env.TELEGRAM_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
-    /* 1️⃣ Intentar con foto */
     if (photo && photo.startsWith("http")) {
       try {
         await telegram(
           "sendPhoto",
-          { chat_id: chatId, photo, caption: text },
+          { chat_id: chatId, photo, caption: text, parse_mode: "Markdown" },
           token
         );
         return res.json({ ok: true, mode: "photo" });
@@ -58,10 +57,9 @@ app.post("/telegram", async (req, res) => {
       }
     }
 
-    /* 2️⃣ Fallback seguro: solo texto */
     await telegram(
       "sendMessage",
-      { chat_id: chatId, text },
+      { chat_id: chatId, text, parse_mode: "Markdown" },
       token
     );
 
@@ -72,9 +70,69 @@ app.post("/telegram", async (req, res) => {
   }
 });
 
+// NUEVO ENDPOINT /notificar (para compatibilidad con tu frontend)
+app.post("/notificar", async (req, res) => {
+  try {
+    if (req.headers["x-secret"] !== process.env.SECRET_KEY) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const { title, description, tag, lat, lng, photo } = req.body;
+    
+    console.log("📨 Datos recibidos en /notificar:", { title, tag, photo: photo ? 'Sí' : 'No' });
+    
+    if (!title || !description || !tag) {
+      return res.status(400).json({ error: "Faltan campos requeridos" });
+    }
+
+    const text = `🚨 *${tag.toUpperCase()}* 🚨\n*${title}*\n${description}\n📍 https://www.google.com/maps?q=${lat},${lng}`;
+    const token = process.env.TELEGRAM_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+
+    if (photo && photo.startsWith("http")) {
+      try {
+        const response = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            photo,
+            caption: text,
+            parse_mode: "Markdown"
+          })
+        });
+        const data = await response.json();
+        if (!data.ok) throw data;
+        return res.json({ ok: true, mode: "photo" });
+      } catch (e) {
+        console.warn("Foto falló, enviando solo texto");
+      }
+    }
+
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: "Markdown"
+      })
+    });
+    
+    const data = await response.json();
+    if (!data.ok) throw data;
+
+    res.json({ ok: true, mode: "text" });
+  } catch (e) {
+    console.error("Error en /notificar:", e);
+    res.status(500).json({ error: "Telegram failed" });
+  }
+});
+
 app.listen(3000, () => {
   console.log("Webhook activo en puerto 3000");
 });
+
 
 
 
